@@ -44,3 +44,7 @@ Debug builds can snapshot their own window for checking layout without a screen:
 
 - [swift-markdown](https://github.com/swiftlang/swift-markdown) (Apache-2.0) for parsing
 - [highlight.js](https://highlightjs.org) 11.12.0 (BSD-3-Clause), bundled in `Resources/` for syntax highlighting
+
+## License
+
+Folio is released under the [MIT License](LICENSE). Bundled third-party code keeps its own license (see Credits).
