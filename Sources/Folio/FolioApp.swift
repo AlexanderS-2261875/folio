@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct FolioApp: App {
     @AppStorage("zoom") private var zoom = 1.0
+    @FocusedValue(\.reader) private var reader
 
     init() {
         #if DEBUG
@@ -19,6 +20,14 @@ struct FolioApp: App {
         }
         .defaultSize(width: 980, height: 1000)
         .commands {
+            CommandGroup(replacing: .textEditing) {
+                Button("Find…") { reader?.showFind() }
+                    .keyboardShortcut("f")
+                Button("Find Next") { reader?.step(1) }
+                    .keyboardShortcut("g")
+                Button("Find Previous") { reader?.step(-1) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
             CommandGroup(after: .toolbar) {
                 Button("Actual Size") { zoom = 1.0 }
                     .keyboardShortcut("0")

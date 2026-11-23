@@ -229,6 +229,8 @@ enum Renderer {
     }
     .mermaid-error-title { color: var(--hl-keyword); font-size: 0.88em; font-weight: 600; margin-bottom: 0.5em; }
     .mermaid-diagram.error pre { margin: 0; padding: 0; background: none; }
+    ::highlight(folio-find) { background-color: rgba(255, 204, 0, 0.35); }
+    ::highlight(folio-find-current) { background-color: #ffcc00; color: #000; }
     mark { background: var(--mark); color: inherit; padding: 0 0.15em; border-radius: 3px; }
     ::selection { background: color-mix(in srgb, var(--link) 28%, transparent); }
     """
@@ -366,6 +368,68 @@ enum Renderer {
 
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderMermaid);
 
+    // ---- Find (⌘F) -------------------------------------------------------
+    // Uses the CSS Custom Highlight API, so the DOM is never modified and
+    // matches that span highlighted code tokens still work.
+    let findQuery = '';
+    let findRanges = [];
+    let findIndex = -1;
+
+    function findTextNodes() {
+      const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+        acceptNode: n => n.parentElement.closest('svg, style, script')
+          ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+      });
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      return nodes;
+    }
+
+    // step 0 = (re)search, keeping the current match where possible; ±1 = next/previous.
+    function find(query, step, scroll) {
+      if (step === 0) {
+        const keep = query === findQuery ? findIndex : 0;
+        findQuery = query;
+        findRanges = [];
+        if (query) {
+          const nodes = findTextNodes();
+          const starts = [];
+          let text = '';
+          for (const n of nodes) { starts.push(text.length); text += n.data; }
+          const locate = pos => {
+            let lo = 0, hi = nodes.length - 1;
+            while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= pos) lo = mid; else hi = mid - 1; }
+            return [nodes[lo], pos - starts[lo]];
+          };
+          const hay = text.toLowerCase();
+          const needle = query.toLowerCase();
+          for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
+            const range = document.createRange();
+            range.setStart(...locate(i));
+            const [endNode, endOffset] = locate(i + needle.length - 1);
+            range.setEnd(endNode, endOffset + 1);
+            findRanges.push(range);
+          }
+        }
+        findIndex = findRanges.length ? Math.min(Math.max(keep, 0), findRanges.length - 1) : -1;
+      } else if (findRanges.length) {
+        findIndex = (findIndex + step + findRanges.length) % findRanges.length;
+      }
+
+      CSS.highlights.set('folio-find', new Highlight(...findRanges));
+      const current = findIndex >= 0 ? new Highlight(findRanges[findIndex]) : new Highlight();
+      current.priority = 1;
+      CSS.highlights.set('folio-find-current', current);
+
+      if (scroll && findIndex >= 0) {
+        const rect = findRanges[findIndex].getBoundingClientRect();
+        if (rect.top < 60 || rect.bottom > window.innerHeight - 40) {
+          window.scrollBy({ top: rect.top - window.innerHeight / 3, behavior: 'smooth' });
+        }
+      }
+      window.webkit.messageHandlers.find.postMessage({ count: findRanges.length, index: findIndex + 1 });
+    }
+
     function decorate() {
       prepareMermaid();
       highlight();
@@ -383,6 +447,7 @@ enum Renderer {
       content.innerHTML = html;
       decorate();
       window.scrollTo(0, y);
+      if (findQuery) find(findQuery, 0, false);  // keep highlights across live reloads
       renderMermaid();
     }
 

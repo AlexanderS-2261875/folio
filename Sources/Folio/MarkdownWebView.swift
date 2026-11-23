@@ -13,12 +13,20 @@ struct ScrollRequest: Equatable {
     let token = UUID()
 }
 
+struct FindRequest: Equatable {
+    let query: String
+    let step: Int          // 0 = search / refresh, 1 = next, -1 = previous
+    let token = UUID()
+}
+
 struct MarkdownWebView: NSViewRepresentable {
     let html: String
     let baseURL: URL?
     let zoom: Double
     let scrollRequest: ScrollRequest?
     let onOutline: ([OutlineItem]) -> Void
+    var findRequest: FindRequest? = nil
+    var onFindResult: (_ count: Int, _ index: Int) -> Void = { _, _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -27,6 +35,7 @@ struct MarkdownWebView: NSViewRepresentable {
         config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: LocalFileSchemeHandler.scheme)
         config.userContentController.add(context.coordinator, name: "outline")
         config.userContentController.add(context.coordinator, name: "loadMermaid")
+        config.userContentController.add(context.coordinator, name: "find")
         config.preferences.isElementFullscreenEnabled = true
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -44,11 +53,16 @@ struct MarkdownWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         let c = context.coordinator
         c.onOutline = onOutline
+        c.onFindResult = onFindResult
         if webView.pageZoom != zoom { webView.pageZoom = zoom }
         c.show(html)
         if let scrollRequest, scrollRequest != c.lastScroll {
             c.lastScroll = scrollRequest
             c.call("scrollToId(id)", ["id": scrollRequest.targetID])
+        }
+        if let findRequest, findRequest != c.lastFind {
+            c.lastFind = findRequest
+            c.call("find(query, step, true)", ["query": findRequest.query, "step": findRequest.step])
         }
     }
 
@@ -57,6 +71,8 @@ struct MarkdownWebView: NSViewRepresentable {
         weak var webView: WKWebView?
         var onOutline: ([OutlineItem]) -> Void = { _ in }
         var lastScroll: ScrollRequest?
+        var lastFind: FindRequest?
+        var onFindResult: (Int, Int) -> Void = { _, _ in }
         private var isLoaded = false
         private var shownHTML: String?
         private var pendingHTML: String?
@@ -109,6 +125,13 @@ struct MarkdownWebView: NSViewRepresentable {
         }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "find", let body = message.body as? [String: Any] {
+                onFindResult(body["count"] as? Int ?? 0, body["index"] as? Int ?? 0)
+                #if DEBUG
+                if let webView { DebugSnapshot.capture(webView) }
+                #endif
+                return
+            }
             if message.name == "loadMermaid" {
                 loadMermaid()
                 return

@@ -10,6 +10,12 @@ struct ReaderView: View {
     @State private var scrollRequest: ScrollRequest?
     @State private var watcher = FileWatcher()
     @State private var columns: NavigationSplitViewVisibility
+    @State private var findVisible = false
+    @State private var findQuery = ""
+    @State private var findCount = 0
+    @State private var findIndex = 0
+    @State private var findRequest: FindRequest?
+    @FocusState private var findFocused: Bool
     @AppStorage("zoom") private var zoom = 1.0
     @AppStorage("showOutline") private var showOutline = true
 
@@ -33,9 +39,20 @@ struct ReaderView: View {
                 baseURL: fileURL?.deletingLastPathComponent(),
                 zoom: zoom,
                 scrollRequest: scrollRequest,
-                onOutline: { outline = $0 }
+                onOutline: { outline = $0 },
+                findRequest: findRequest,
+                onFindResult: { findCount = $0; findIndex = $1 }
             )
             .ignoresSafeArea(edges: .bottom)
+            .overlay(alignment: .topTrailing) {
+                if findVisible {
+                    FindBar(query: $findQuery, count: findCount, index: findIndex,
+                            focused: $findFocused, onStep: stepFind, onClose: closeFind)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy(duration: 0.2), value: findVisible)
+            .onChange(of: findQuery) { _, query in findRequest = FindRequest(query: query, step: 0) }
         }
         .onAppear {
             watcher.watch(fileURL) { update($0) }
@@ -59,6 +76,7 @@ struct ReaderView: View {
             .sharedBackgroundVisibility(.hidden) // plain title, no glass capsule
         }
         .toolbar(removing: .title) // our DocumentTitle replaces the system title
+        .focusedSceneValue(\.reader, ReaderActions(showFind: openFind, step: stepFind))
     }
 
     @ViewBuilder
@@ -82,6 +100,24 @@ struct ReaderView: View {
             }
             .listStyle(.sidebar)
         }
+    }
+
+    private func openFind() {
+        findVisible = true
+        findFocused = true
+        if !findQuery.isEmpty { findRequest = FindRequest(query: findQuery, step: 0) }
+    }
+
+    private func stepFind(_ step: Int) {
+        guard !findQuery.isEmpty else { return openFind() }
+        if !findVisible { openFind() }
+        findRequest = FindRequest(query: findQuery, step: step)
+    }
+
+    private func closeFind() {
+        findVisible = false
+        findFocused = false
+        findRequest = FindRequest(query: "", step: 0)   // clears the highlights; query is kept for ⌘G
     }
 
     private func update(_ newText: String) {

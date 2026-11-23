@@ -11,6 +11,7 @@ A clean, native Markdown reader for macOS. Open a `.md` file and read it, nicely
 - **Live reload** when the file changes on disk (also with editors that save by replacing the file)
 - **Knows special files**: `CLAUDE.md`, `SKILL.md`, `AGENTS.md`, `README`, `CHANGELOG`, `CONTRIBUTING`, `LICENSE` and `SECURITY` get a coloured title and icon; click the name for what the file is and a link to its docs
 - Light and dark mode, relative images, links to other `.md` files open in Folio
+- **Find** with ⌘F: highlights every match, ⌘G / ⇧⌘G (or Enter / ⇧Enter) to step through, Esc to close; also finds text inside highlighted code
 - ⌘+ / ⌘− / ⌘0 zoom · word count and reading time in the title bar
 - Raw HTML in a document can't run scripts or make network requests (Content-Security-Policy)
 
