@@ -26,6 +26,7 @@ struct MarkdownWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: LocalFileSchemeHandler.scheme)
         config.userContentController.add(context.coordinator, name: "outline")
+        config.userContentController.add(context.coordinator, name: "loadMermaid")
         config.preferences.isElementFullscreenEnabled = true
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -99,7 +100,19 @@ struct MarkdownWebView: NSViewRepresentable {
             }
         }
 
+        /// Injects the bundled Mermaid library (once per page) and renders the diagrams.
+        private func loadMermaid() {
+            guard let webView else { return }
+            webView.evaluateJavaScript(Renderer.mermaidJS + "\n;0") { [weak webView] _, _ in
+                webView?.evaluateJavaScript("renderMermaid(); 0")
+            }
+        }
+
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "loadMermaid" {
+                loadMermaid()
+                return
+            }
             guard message.name == "outline", let items = message.body as? [[String: Any]] else { return }
             #if DEBUG
             if let webView { DebugSnapshot.capture(webView) }

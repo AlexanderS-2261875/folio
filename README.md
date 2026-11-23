@@ -6,6 +6,7 @@ A clean, native Markdown reader for macOS. Open a `.md` file and read it, nicely
 
 - **GitHub-flavoured Markdown** via Apple's [swift-markdown](https://github.com/swiftlang/swift-markdown): tables, task lists, strikethrough
 - **Syntax highlighting** for 36 languages, fully offline
+- **Mermaid diagrams** (flowcharts, sequence, pie, gantt, class, state, …) in ```` ```mermaid ```` blocks, styled for light and dark mode, offline
 - **Outline sidebar** built from your headings — click to jump
 - **Live reload** when the file changes on disk (also with editors that save by replacing the file)
 - **Knows special files**: `CLAUDE.md`, `SKILL.md`, `AGENTS.md`, `README`, `CHANGELOG`, `CONTRIBUTING`, `LICENSE` and `SECURITY` get a coloured title and icon; click the name for what the file is and a link to its docs
@@ -44,6 +45,7 @@ Debug builds can snapshot their own window for checking layout without a screen:
 
 - [swift-markdown](https://github.com/swiftlang/swift-markdown) (Apache-2.0) for parsing
 - [highlight.js](https://highlightjs.org) 11.12.0 (BSD-3-Clause), bundled in `Resources/` for syntax highlighting
+- [Mermaid](https://mermaid.js.org) 12.3.0 (MIT), bundled in `Resources/` for diagrams; loaded only for documents that contain one
 
 ## License
 

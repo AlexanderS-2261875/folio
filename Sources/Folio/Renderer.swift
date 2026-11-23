@@ -38,6 +38,11 @@ enum Renderer {
     static let highlightJS: String = Bundle.main.url(forResource: "highlight.min", withExtension: "js")
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
 
+    /// Mermaid (MIT), bundled in Contents/Resources. 5.5 MB, so it is only injected
+    /// into a page once that page actually contains a ```mermaid block.
+    static let mermaidJS: String = Bundle.main.url(forResource: "mermaid.min", withExtension: "js")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+
     static let css = """
     :root {
       --bg: #ffffff;
@@ -207,6 +212,23 @@ enum Renderer {
     th, td { padding: 0.5em 0.9em; border: 1px solid var(--rule); }
     th { font-weight: 600; background: var(--code-bg); }
     tbody tr:nth-child(even) { background: var(--table-alt); }
+    .mermaid-diagram {
+      margin: 0 0 1.1em;
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+      min-height: 2em;
+    }
+    .mermaid-diagram svg { max-width: 100%; height: auto; }
+    .mermaid-diagram.error {
+      display: block;
+      padding: 0.8em 1.1em;
+      border-radius: 8px;
+      background: var(--code-bg);
+      border-left: 3px solid var(--hl-keyword);
+    }
+    .mermaid-error-title { color: var(--hl-keyword); font-size: 0.88em; font-weight: 600; margin-bottom: 0.5em; }
+    .mermaid-diagram.error pre { margin: 0; padding: 0; background: none; }
     mark { background: var(--mark); color: inherit; padding: 0 0.15em; border-radius: 3px; }
     ::selection { background: color-mix(in srgb, var(--link) 28%, transparent); }
     """
@@ -231,12 +253,121 @@ enum Renderer {
         const match = el.className.match(/language-([\\w+#.-]+)/);
         if (!match) return;
         const lang = match[1].toLowerCase();
+        if (lang === 'mermaid') return;
         el.parentElement.dataset.lang = lang;
         if (window.hljs && hljs.getLanguage(lang)) hljs.highlightElement(el);
       });
     }
 
+    // ---- Mermaid -------------------------------------------------------------
+    const isDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const svgCache = new Map();   // "dark|source" -> svg, so live reloads don't flicker
+    let mermaidRequested = false;
+
+    // Diagram colours drawn from Folio's own palette.
+    const mermaidLight = {
+      darkMode: false, background: 'transparent', fontSize: '15px',
+      primaryColor: '#eaf2ff', primaryTextColor: '#1d1d1f', primaryBorderColor: '#a9c6f2',
+      secondaryColor: '#f3ecfe', secondaryBorderColor: '#cdb6f3',
+      tertiaryColor: '#f5f5f7', tertiaryBorderColor: '#d2d2d7',
+      lineColor: '#86868b', textColor: '#1d1d1f',
+      mainBkg: '#eaf2ff', nodeBorder: '#a9c6f2', clusterBkg: '#f5f5f7', clusterBorder: '#d2d2d7',
+      edgeLabelBackground: '#ffffff', pieOpacity: '0.92',
+      noteBkgColor: '#fff8d6', noteBorderColor: '#e3c55b', noteTextColor: '#1d1d1f',
+      actorBkg: '#eaf2ff', actorBorder: '#a9c6f2', actorTextColor: '#1d1d1f',
+      signalColor: '#6e6e73', signalTextColor: '#1d1d1f', labelBoxBkgColor: '#f5f5f7',
+      pie1: '#0a66d8', pie2: '#8250df', pie3: '#d97757', pie4: '#1a7f37', pie5: '#bf8700',
+      pie6: '#cf222e', pie7: '#0598bc', pie8: '#6e6e73',
+      pieStrokeColor: '#ffffff', pieStrokeWidth: '2px', pieOuterStrokeWidth: '0px',
+      pieSectionTextColor: '#ffffff', pieTitleTextColor: '#1d1d1f', pieLegendTextColor: '#1d1d1f',
+    };
+    const mermaidDark = {
+      darkMode: true, background: 'transparent', fontSize: '15px',
+      primaryColor: '#1f2b40', primaryTextColor: '#e8e8ed', primaryBorderColor: '#3f5f93',
+      secondaryColor: '#2c2440', secondaryBorderColor: '#5b478c',
+      tertiaryColor: '#2a2a2c', tertiaryBorderColor: '#48484a',
+      lineColor: '#98989d', textColor: '#e8e8ed',
+      mainBkg: '#1f2b40', nodeBorder: '#3f5f93', clusterBkg: '#2a2a2c', clusterBorder: '#48484a',
+      edgeLabelBackground: '#1e1e1f', pieOpacity: '0.92',
+      noteBkgColor: '#3a3318', noteBorderColor: '#8a7424', noteTextColor: '#e8e8ed',
+      actorBkg: '#1f2b40', actorBorder: '#3f5f93', actorTextColor: '#e8e8ed',
+      signalColor: '#98989d', signalTextColor: '#e8e8ed', labelBoxBkgColor: '#2a2a2c',
+      pie1: '#5aa9ff', pie2: '#b48cf2', pie3: '#e8956f', pie4: '#56d364', pie5: '#e3b341',
+      pie6: '#ff7b72', pie7: '#39c5cf', pie8: '#98989d',
+      pieStrokeColor: '#1e1e1f', pieStrokeWidth: '2px', pieOuterStrokeWidth: '0px',
+      pieSectionTextColor: '#1e1e1f', pieTitleTextColor: '#e8e8ed', pieLegendTextColor: '#e8e8ed',
+    };
+    let mermaidSeq = 0;
+    // Keep diagrams at their natural size (CSS still shrinks them to fit) instead of
+    // stretching small diagrams to the full column width.
+    const naturalSize = Object.fromEntries(
+      ['pie', 'gantt', 'class', 'state', 'er', 'journey', 'gitGraph', 'mindmap', 'timeline',
+       'quadrantChart', 'xyChart', 'requirement', 'sankey', 'block', 'architecture', 'packet', 'radar', 'kanban']
+        .map(k => [k, { useMaxWidth: false }]));
+
+    function prepareMermaid() {
+      content.querySelectorAll('pre > code.language-mermaid').forEach(code => {
+        const div = document.createElement('div');
+        div.className = 'mermaid-diagram';
+        div.dataset.source = code.textContent;
+        const cached = svgCache.get(`${isDark()}|${div.dataset.source}`);
+        if (cached) div.innerHTML = cached;
+        code.parentElement.replaceWith(div);
+      });
+    }
+
+    function showMermaidError(node, error) {
+      node.classList.add('error');
+      const title = document.createElement('div');
+      title.className = 'mermaid-error-title';
+      title.textContent = 'Mermaid: ' + String(error && error.message || error).split('\\n')[0];
+      const pre = document.createElement('pre');
+      pre.textContent = node.dataset.source;
+      node.replaceChildren(title, pre);
+    }
+
+    async function renderMermaid() {
+      const nodes = [...content.querySelectorAll('.mermaid-diagram')];
+      if (!nodes.length) return;
+      if (!window.mermaid) {
+        if (!mermaidRequested) {
+          mermaidRequested = true;
+          window.webkit.messageHandlers.loadMermaid.postMessage(null);
+        }
+        return;
+      }
+      const dark = isDark();
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',
+        theme: 'base',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
+        suppressErrorRendering: true,
+        themeVariables: dark ? mermaidDark : mermaidLight,
+        ...naturalSize,
+        sequence: { useMaxWidth: false, mirrorActors: false, width: 130, height: 44, actorMargin: 60, boxMargin: 8 },
+        flowchart: { useMaxWidth: false, curve: 'basis', padding: 14 },
+      });
+      for (const node of nodes) {
+        const key = `${dark}|${node.dataset.source}`;
+        if (svgCache.has(key)) { node.innerHTML = svgCache.get(key); node.classList.remove('error'); continue; }
+        const id = `folio-mermaid-${++mermaidSeq}`;
+        try {
+          const { svg } = await mermaid.render(id, node.dataset.source);
+          svgCache.set(key, svg);
+          node.classList.remove('error');
+          node.innerHTML = svg;
+        } catch (error) {
+          document.getElementById('d' + id)?.remove();
+          showMermaidError(node, error);
+        }
+      }
+    }
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderMermaid);
+
     function decorate() {
+      prepareMermaid();
       highlight();
       const used = new Set();
       const outline = [];
@@ -252,6 +383,7 @@ enum Renderer {
       content.innerHTML = html;
       decorate();
       window.scrollTo(0, y);
+      renderMermaid();
     }
 
     function scrollToId(id) {

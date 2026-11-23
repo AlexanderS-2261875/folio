@@ -7,6 +7,9 @@ struct FolioApp: App {
     init() {
         #if DEBUG
         DebugSnapshot.renderTitles()
+        if let look = ProcessInfo.processInfo.environment["FOLIO_APPEARANCE"] {
+            NSApplication.shared.appearance = NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
+        }
         #endif
     }
 
