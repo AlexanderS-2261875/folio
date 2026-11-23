@@ -11,7 +11,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Folio"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
-cp Resources/highlight.min.js Resources/mermaid.min.js "$APP/Contents/Resources/"
+cp Resources/highlight.min.js Resources/mermaid.min.js Resources/mathjax.min.js "$APP/Contents/Resources/"
 
 if [[ ! -f build/AppIcon.icns ]]; then
   swift scripts/make-icon.swift build/AppIcon.iconset

@@ -36,6 +36,7 @@ struct MarkdownWebView: NSViewRepresentable {
         config.userContentController.add(context.coordinator, name: "outline")
         config.userContentController.add(context.coordinator, name: "loadMermaid")
         config.userContentController.add(context.coordinator, name: "find")
+        config.userContentController.add(context.coordinator, name: "loadMathJax")
         config.preferences.isElementFullscreenEnabled = true
 
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -130,6 +131,12 @@ struct MarkdownWebView: NSViewRepresentable {
                 #if DEBUG
                 if let webView { DebugSnapshot.capture(webView) }
                 #endif
+                return
+            }
+            if message.name == "loadMathJax" {
+                webView?.evaluateJavaScript(Renderer.mathJaxJS + "\n;0") { [weak webView] _, _ in
+                    webView?.evaluateJavaScript("renderMath(); 0")
+                }
                 return
             }
             if message.name == "loadMermaid" {

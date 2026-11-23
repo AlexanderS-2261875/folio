@@ -11,6 +11,7 @@ A clean, native Markdown reader for macOS. Open a `.md` file and read it, nicely
 - **Live reload** when the file changes on disk (also with editors that save by replacing the file)
 - **Knows special files**: `CLAUDE.md`, `SKILL.md`, `AGENTS.md`, `README`, `CHANGELOG`, `CONTRIBUTING`, `LICENSE` and `SECURITY` get a coloured title and icon; click the name for what the file is and a link to its docs
 - Light and dark mode, relative images, links to other `.md` files open in Folio
+- **Math** with MathJax: `$…$`, `$$…$$`, `\(…\)`, `\[…\]` and ```` ```math ```` blocks, offline. Prices like "$5 and $10" stay text; write `\$` for a literal dollar
 - **Find** with ⌘F: highlights every match, ⌘G / ⇧⌘G (or Enter / ⇧Enter) to step through, Esc to close; also finds text inside highlighted code
 - ⌘+ / ⌘− / ⌘0 zoom · word count and reading time in the title bar
 - Raw HTML in a document can't run scripts or make network requests (Content-Security-Policy)
@@ -46,6 +47,7 @@ Debug builds can snapshot their own window for checking layout without a screen:
 
 - [swift-markdown](https://github.com/swiftlang/swift-markdown) (Apache-2.0) for parsing
 - [highlight.js](https://highlightjs.org) 11.12.0 (BSD-3-Clause), bundled in `Resources/` for syntax highlighting
+- [MathJax](https://www.mathjax.org) 3.2.2 (Apache-2.0), bundled in `Resources/` for math; loaded only for documents that contain math
 - [Mermaid](https://mermaid.js.org) 12.3.0 (MIT), bundled in `Resources/` for diagrams; loaded only for documents that contain one
 
 ## License

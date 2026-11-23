@@ -4,8 +4,9 @@ import Markdown
 enum Renderer {
     /// Markdown → HTML body fragment (GitHub-flavoured: tables, task lists, strikethrough).
     static func body(from markdown: String) -> String {
-        let document = Document(parsing: markdown, options: [.parseBlockDirectives])
-        return HTMLFormatter.format(document, options: [.parseAsides])
+        let (protected, formulas) = MathExtractor.extract(markdown)
+        let document = Document(parsing: protected, options: [.parseBlockDirectives])
+        return MathExtractor.restore(HTMLFormatter.format(document, options: [.parseAsides]), formulas)
     }
 
     static func stats(for markdown: String) -> String {
@@ -41,6 +42,11 @@ enum Renderer {
     /// Mermaid (MIT), bundled in Contents/Resources. 5.5 MB, so it is only injected
     /// into a page once that page actually contains a ```mermaid block.
     static let mermaidJS: String = Bundle.main.url(forResource: "mermaid.min", withExtension: "js")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+
+    /// MathJax 3.2.2 (Apache-2.0), self-contained SVG build with every TeX extension,
+    /// injected only into pages that contain math.
+    static let mathJaxJS: String = Bundle.main.url(forResource: "mathjax.min", withExtension: "js")
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
 
     static let css = """
@@ -229,6 +235,12 @@ enum Renderer {
     }
     .mermaid-error-title { color: var(--hl-keyword); font-size: 0.88em; font-weight: 600; margin-bottom: 0.5em; }
     .mermaid-diagram.error pre { margin: 0; padding: 0; background: none; }
+    .math { font-size: 1.05em; }
+    .math:not(.rendered) { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.87em; color: var(--muted); }
+    .math.display { display: block; margin: 1.1em 0; text-align: center; overflow-x: auto; overflow-y: hidden; }
+    .math.error { color: var(--hl-keyword); }
+    .math [data-mml-node="merror"] > rect { fill: color-mix(in srgb, var(--hl-keyword) 14%, transparent) !important; }
+    .math [data-mml-node="merror"] g { fill: var(--hl-keyword) !important; stroke: none; }
     ::highlight(folio-find) { background-color: rgba(255, 204, 0, 0.35); }
     ::highlight(folio-find-current) { background-color: #ffcc00; color: #000; }
     mark { background: var(--mark); color: inherit; padding: 0 0.15em; border-radius: 3px; }
@@ -368,6 +380,53 @@ enum Renderer {
 
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderMermaid);
 
+    // ---- Math (MathJax) ----------------------------------------------------
+    let mathRequested = false;
+
+    function prepareMath() {
+      // ```math blocks (GitHub syntax) become display math.
+      content.querySelectorAll('pre > code.language-math').forEach(code => {
+        const span = document.createElement('span');
+        span.className = 'math display';
+        span.textContent = code.textContent;
+        code.parentElement.replaceWith(span);
+      });
+    }
+
+    async function renderMath() {
+      const nodes = [...content.querySelectorAll('.math:not(.rendered)')];
+      if (!nodes.length) return;
+      if (!(window.MathJax && MathJax.startup)) {
+        if (!mathRequested) {
+          mathRequested = true;
+          window.MathJax = {
+            startup: { typeset: false },
+            svg: { fontCache: 'local' },
+            tex: { packages: { '[+]': ['ams', 'boldsymbol', 'mathtools', 'physics'] } },
+          };
+          window.webkit.messageHandlers.loadMathJax.postMessage(null);
+        }
+        return;
+      }
+      await MathJax.startup.promise;
+      if (!document.getElementById('MJX-SVG-styles')) {
+        // tex2svg doesn't add MathJax's CSS, which hides the screen-reader MathML copy.
+        document.head.appendChild(MathJax.svgStylesheet());
+      }
+      for (const node of nodes) {
+        const tex = node.dataset.tex ?? node.textContent;
+        node.dataset.tex = tex;
+        const display = node.classList.contains('display');
+        try {
+          node.replaceChildren(MathJax.tex2svg(tex, { display }));
+          node.classList.add('rendered');
+          node.title = tex;
+        } catch (error) {
+          node.classList.add('error');
+        }
+      }
+    }
+
     // ---- Find (⌘F) -------------------------------------------------------
     // Uses the CSS Custom Highlight API, so the DOM is never modified and
     // matches that span highlighted code tokens still work.
@@ -431,6 +490,7 @@ enum Renderer {
     }
 
     function decorate() {
+      prepareMath();
       prepareMermaid();
       highlight();
       const used = new Set();
@@ -448,6 +508,7 @@ enum Renderer {
       decorate();
       window.scrollTo(0, y);
       if (findQuery) find(findQuery, 0, false);  // keep highlights across live reloads
+      renderMath();
       renderMermaid();
     }
 
